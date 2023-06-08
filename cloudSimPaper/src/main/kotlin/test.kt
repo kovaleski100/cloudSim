@@ -21,12 +21,11 @@
  *     You should have received a copy of the GNU General Public License
  *     along with CloudSim Plus. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.cloudsimplus.examples
+package org.cloudsimplus.examples.dynamic
 
-import ch.qos.logback.classic.Level
-import org.cloudsimplus.allocationpolicies.VmAllocationPolicyFirstFit
 import org.cloudsimplus.brokers.DatacenterBroker
 import org.cloudsimplus.brokers.DatacenterBrokerSimple
+import org.cloudsimplus.builders.tables.CloudletsTableBuilder
 import org.cloudsimplus.cloudlets.Cloudlet
 import org.cloudsimplus.cloudlets.CloudletSimple
 import org.cloudsimplus.core.CloudSimPlus
@@ -34,172 +33,170 @@ import org.cloudsimplus.datacenters.Datacenter
 import org.cloudsimplus.datacenters.DatacenterSimple
 import org.cloudsimplus.hosts.Host
 import org.cloudsimplus.hosts.HostSimple
+import org.cloudsimplus.listeners.CloudletVmEventInfo
+import org.cloudsimplus.provisioners.ResourceProvisionerSimple
 import org.cloudsimplus.resources.Pe
 import org.cloudsimplus.resources.PeSimple
-import org.cloudsimplus.util.Log
-import org.cloudsimplus.util.TimeUtil
-import org.cloudsimplus.utilizationmodels.UtilizationModelDynamic
+import org.cloudsimplus.schedulers.cloudlet.CloudletSchedulerTimeShared
+import org.cloudsimplus.schedulers.vm.VmSchedulerSpaceShared
+import org.cloudsimplus.utilizationmodels.UtilizationModelFull
 import org.cloudsimplus.vms.Vm
 import org.cloudsimplus.vms.VmSimple
-import java.time.LocalDateTime
 
 /**
- * An example creating a huge number of Hosts, VMs and Cloudlets
- * to simulate a large-scale cloud infrastructure.
+ * An example showing how to dynamically create one Cloudlet after the previous one finishes.
+ * It stops creating Cloudlets when the number reaches [.CLOUDLETS].
  *
  *
- * The example may run out of memory.
- * Try to increase heap memory space passing, for instance,
- * -Xmx6g to the java command line, where 6g means 6GB of maximum heap size.
- *
- *
- * Your computer may not even have enough memory capacity to run this example
- * and it may just crashes with OutOfMemoryException.
- *
- *
- * Some factors that drastically impact simulation performance and memory consumption
- * is the [.CLOUDLETS] number and [.SCHEDULING_INTERVAL].
+ * This example uses CloudSim Plus Listener features to intercept when
+ * the a Cloudlet finishes its execution to then request
+ * the creation of a new Cloudlet. It uses the Java 8+ Lambda Functions features
+ * to pass a listener to the mentioned Cloudlet, by means of the
+ * [Cloudlet.addOnFinishListener] method.
  *
  * @author Manoel Campos da Silva Filho
- * @since ClodSimPlus 7.3.1
+ * @since CloudSim Plus 2.2.0
  */
-class LargeScaleExample private constructor() {
-    private val simulation: CloudSimPlus
-    private val broker0: DatacenterBroker
+class CreateCloudletAfterLastFinishedOne private constructor() {
+    private val hostList: MutableList<Host>
     private val vmList: List<Vm>
-    private val cloudletList: List<Cloudlet>
-    private val datacenter0: Datacenter
-    private val startSecs: Double
+    private val cloudletList: MutableList<Cloudlet>
+    private val broker: DatacenterBroker
+    private val datacenter: Datacenter
+    private val simulation: CloudSimPlus
 
+    /**
+     * Default constructor that builds and starts the simulation.
+     */
     init {
-        // Disable logging for performance improvements.
-        Log.setLevel(Level.OFF)
-        startSecs = System.currentTimeMillis() / 1000.0
-        println("Creating simulation scenario at " + LocalDateTime.now())
-        System.out.printf("Creating 1 Datacenter -> Hosts: %,d VMs: %,d Cloudlets: %,d%n", servers_per_site, VMS_per_user, numTasksPerUser)
+        /*Enables just some level of log messages.
+          Make sure to import org.cloudsimplus.util.Log;*/
+        //Log.setLevel(ch.qos.logback.classic.Level.WARN);
+        println("Starting " + javaClass.simpleName)
         simulation = CloudSimPlus()
+        hostList = ArrayList()
+        cloudletList = ArrayList()
+        datacenter = createDatacenter()
+        broker = DatacenterBrokerSimple(simulation)
+        vmList = createAndSubmitVms()
+        createAndSubmitOneCloudlet()
+        runSimulationAndPrintResults()
+        println("Starting " + javaClass.simpleName)
+        println(javaClass.simpleName + " finished!")
+    }
 
-        datacenter0 = createDatacenter()
-
-        //Creates a broker that is a software acting on behalf of a cloud customer to manage his/her VMs and Cloudlets
-        broker0 = DatacenterBrokerSimple(simulation)
-        vmList = createVms()
-        cloudletList = createCloudlets()
-        brokerSubmit()
-        println("Starting simulation after " + actualElapsedTime())
+    private fun runSimulationAndPrintResults() {
         simulation.start()
-        val submittedCloudlets = broker0.getCloudletSubmittedList().size.toLong()
-        val cloudletFinishedList = broker0.getCloudletFinishedList<Cloudlet>().size.toLong()
-        System.out.printf("Submitted Cloudlets: %d Finished Cloudlets: %d%n", submittedCloudlets, cloudletFinishedList)
-        System.out.printf(
-            "Simulated time: %s Actual Execution Time: %s%n", simulatedTime(), actualElapsedTime()
-        )
+        val cloudletFinishedList = broker.getCloudletFinishedList<Cloudlet>()
+        CloudletsTableBuilder(cloudletFinishedList).build()
     }
 
-    private fun simulatedTime(): String {
-        return TimeUtil.secondsToStr(simulation.clock())
-    }
-
-    private fun actualElapsedTime(): String {
-        return TimeUtil.secondsToStr(TimeUtil.elapsedSeconds(startSecs))
-    }
-
-    private fun brokerSubmit() {
-        System.out.printf("Submitting %,d VMs%n", VMS_per_user)
-        broker0.submitVmList(vmList)
-        System.out.printf("Submitting %,d Cloudlets%n", numTasksPerUser)
-        broker0.submitCloudletList(cloudletList)
+    private fun createAndSubmitVms(): List<Vm> {
+        val newVmList = ArrayList<Vm>(VMS)
+        for (i in 0 until VMS) {
+            newVmList.add(createVm())
+        }
+        broker.submitVmList(newVmList)
+        return newVmList
     }
 
     /**
-     * Creates a Datacenter and its Hosts.
+     * Creates a VM with pre-defined configuration.
+     *
+     * @return the created VM
+     */
+    private fun createVm(): Vm {
+        val mips = 1000
+        return VmSimple(mips.toDouble(), VM_PES_NUMBER.toLong())
+            .setRam(512).setBw(1000).setSize(10000)
+            .setCloudletScheduler(CloudletSchedulerTimeShared())
+    }
+
+    /**
+     * Creates and submit one Cloudlet,
+     * defining an Event Listener that is notified when such a Cloudlet
+     * is finished in order to create another one.
+     * Cloudlets stop to be created when the
+     * number of Cloudlets reaches [.CLOUDLETS].
+     */
+    private fun createAndSubmitOneCloudlet() {
+        val id = cloudletList.size
+        val length: Long = 10000 //in number of Million Instructions (MI)
+        val pesNumber = 1
+        val cloudlet = CloudletSimple(id.toLong(), length, pesNumber.toLong())
+            .setFileSize(300)
+            .setOutputSize(300)
+            .setUtilizationModel(UtilizationModelFull())
+        cloudletList.add(cloudlet)
+        if (cloudletList.size < CLOUDLETS) {
+            cloudlet.addOnFinishListener { info: CloudletVmEventInfo ->
+                cloudletFinishListener(
+                    info
+                )
+            }
+        }
+        broker.submitCloudlet(cloudlet)
+    }
+
+    private fun cloudletFinishListener(info: CloudletVmEventInfo) {
+        System.out.printf(
+            "\t# %.2f: Requesting creation of new Cloudlet after %s finishes executing.%n",
+            info.time, info.cloudlet
+        )
+        createAndSubmitOneCloudlet()
+    }
+
+    /**
+     * Creates a Datacenter with pre-defined configuration.
+     *
+     * @return the created Datacenter
      */
     private fun createDatacenter(): Datacenter {
-        val hostList = ArrayList<Host>()
-        System.out.printf("Creating %,d Hosts%n", servers_per_site)
-        for (i in 0 until servers_per_site) {
-            val host = createHost()
-            hostList.add(host)
+        for (i in 0 until HOSTS) {
+            hostList.add(createHost(i))
         }
-        val dc = DatacenterSimple(simulation, hostList, VmAllocationPolicyFirstFit())
-        dc.setSchedulingInterval(SCHEDULING_INTERVAL)
-        return dc
-    }
-
-    private fun createHost(): Host {
-        val peList = ArrayList<Pe>(cores_per_server)
-        //List of Host's CPUs (Processing Elements, PEs)
-        for (i in 0 until cores_per_server) {
-            //Uses a PeProvisionerSimple by default to provision PEs for VMs
-            peList.add(PeSimple(mipsPerCoreServer.toDouble()))
-        }
-
-        /*
-        Uses ResourceProvisionerSimple by default for RAM and BW provisioning
-        and VmSchedulerSpaceShared for VM scheduling.
-        */return HostSimple((2048).toLong(), 10000, 1000000, peList)
+        return DatacenterSimple(simulation, hostList)
     }
 
     /**
-     * Creates a list of VMs.
+     * Creates a host with pre-defined configuration.
+     *
+     * @param id The Host id
+     * @return the created host
      */
-    private fun createVms(): List<Vm> {
-        val vmList = ArrayList<Vm>(VMS_per_user)
-        System.out.printf("Creating %,d VMs%n", VMS_per_user)
-        for (i in 0 until VMS_per_user) {
-            //Uses a CloudletSchedulerTimeShared by default to schedule Cloudlets
-            val vm = VmSimple(VM_mips.toDouble(), VM_PES.toLong())
-            vm.setRam(512).setBw(10000).setSize(10000)
-            vmList.add(vm)
+    private fun createHost(id: Int): Host {
+        val peList = ArrayList<Pe>()
+        val mips: Long = 1000
+        for (i in 0 until HOST_PES_NUMBER) {
+            peList.add(PeSimple(mips.toDouble()))
         }
-        return vmList
-    }
-
-    /**
-     * Creates a list of Cloudlets.
-     */
-    private fun createCloudlets(): List<Cloudlet> {
-        val cloudletList = ArrayList<Cloudlet>(numTasksPerUser)
-
-        //UtilizationModel defining the Cloudlets use only 50% of any resource all the time
-        val utilizationModel = UtilizationModelDynamic(0.5)
-        System.out.printf("Creating %,d Cloudlets%n", numTasksPerUser)
-        for (i in 0 until numTasksPerUser) {
-            val cloudlet = CloudletSimple(taskLength, VMS_per_user, utilizationModel)
-            cloudlet.setSizes(1024)
-            cloudletList.add(cloudlet)
-        }
-        return cloudletList
+        val ram: Long = 2048 // host memory (Megabyte)
+        val storage: Long = 1000000 // host storage (Megabyte)
+        val bw: Long = 10000 //Megabits/s
+        return HostSimple(ram, bw, storage, peList)
+            .setRamProvisioner(ResourceProvisionerSimple())
+            .setBwProvisioner(ResourceProvisionerSimple())
+            .setVmScheduler(VmSchedulerSpaceShared())
     }
 
     companion object {
-        private const val sites = 4
-        private const val users_per_site = 1
-        private const val VMS_per_user = 1
-        private const val VM_PES = 4
-        private const val VM_mips = 100
-
-        private const val totalTask = 100 // 1000, 10000
-
-        private const val servers_per_site = 1
-        private const val cores_per_server = 4
-        private const val mipsPerCoreServer = 1000.0
-        private const val numTasksPerUser = totalTask/ sites
-        private const val taskLength = 100000000L
-
+        private const val site = 4
+        private const val HOSTS = 1
+        private const val VMS = 1
+        private const val HOST_PES_NUMBER = 4
+        private const val VM_PES_NUMBER = 4
+        private const val totalTask = 10000
+        private const val CLOUDLETS = totalTask/site //VMS * VM_PES_NUMBER
 
         /**
-         * Defines a time interval to process cloudlets execution
-         * and possibly collect data. Setting a value greater than 0
-         * enables that interval, which cause huge performance penaults for
-         * lage scale simulations.
+         * Starts the example execution, calling the class constructor\
+         * to build and run the simulation.
          *
-         * @see Datacenter.setSchedulingInterval
+         * @param args command line parameters
          */
-        private const val SCHEDULING_INTERVAL = -1.0
         @JvmStatic
         fun main(args: Array<String>) {
-            LargeScaleExample()
+            CreateCloudletAfterLastFinishedOne()
         }
     }
 }
