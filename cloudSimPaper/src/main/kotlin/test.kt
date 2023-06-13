@@ -59,9 +59,9 @@ import org.cloudsimplus.vms.VmSimple
  */
 class CreateCloudletAfterLastFinishedOne private constructor() {
     private val hostList: MutableList<Host>
-    private val vmList: List<Vm>
+    private val vmList: ArrayList<Vm>
     private val cloudletList: MutableList<Cloudlet>
-    private val broker: DatacenterBroker
+    private val broker: ArrayList<DatacenterBroker>
     private val datacenter: Datacenter
     private val simulation: CloudSimPlus
 
@@ -77,21 +77,29 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
         hostList = ArrayList()
         cloudletList = ArrayList()
         datacenter = createDatacenter()
-        broker = DatacenterBrokerSimple(simulation)
-        vmList = createAndSubmitVms()
-        createAndSubmitOneCloudlet()
-        runSimulationAndPrintResults()
+        broker = ArrayList()
+        vmList = ArrayList()
+        for( i in 0 until site)
+        {
+            broker.add(DatacenterBrokerSimple(simulation))
+            vmList.addAll(createAndSubmitVms(broker[i]))
+            createAndSubmitOneCloudlet(broker[i])
+        }
         println("Starting " + javaClass.simpleName)
-        println(javaClass.simpleName + " finished!")
+        simulation.start()
+        for(i in 0 until site)
+        {
+            runSimulationAndPrintResults(broker[i])
+            println(javaClass.simpleName + " finished!")
+        }
     }
 
-    private fun runSimulationAndPrintResults() {
-        simulation.start()
+    private fun runSimulationAndPrintResults(broker: DatacenterBroker) {
         val cloudletFinishedList = broker.getCloudletFinishedList<Cloudlet>()
         CloudletsTableBuilder(cloudletFinishedList).build()
     }
 
-    private fun createAndSubmitVms(): List<Vm> {
+    private fun createAndSubmitVms(broker: DatacenterBroker): List<Vm> {
         val newVmList = ArrayList<Vm>(VMS)
         for (i in 0 until VMS) {
             newVmList.add(createVm())
@@ -119,10 +127,10 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
      * Cloudlets stop to be created when the
      * number of Cloudlets reaches [.CLOUDLETS].
      */
-    private fun createAndSubmitOneCloudlet() {
+    private fun createAndSubmitOneCloudlet(broker: DatacenterBroker) {
         val id = cloudletList.size
-        val length: Long = 10000 //in number of Million Instructions (MI)
-        val pesNumber = 1
+        val length: Long = 100000 //in number of Million Instructions (MI)
+        val pesNumber = VM_PES_NUMBER
         val cloudlet = CloudletSimple(id.toLong(), length, pesNumber.toLong())
             .setFileSize(300)
             .setOutputSize(300)
@@ -131,19 +139,20 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
         if (cloudletList.size < CLOUDLETS) {
             cloudlet.addOnFinishListener { info: CloudletVmEventInfo ->
                 cloudletFinishListener(
-                    info
+                    info,
+                    broker
                 )
             }
         }
         broker.submitCloudlet(cloudlet)
     }
 
-    private fun cloudletFinishListener(info: CloudletVmEventInfo) {
+    private fun cloudletFinishListener(info: CloudletVmEventInfo, broker: DatacenterBroker) {
         System.out.printf(
             "\t# %.2f: Requesting creation of new Cloudlet after %s finishes executing.%n",
             info.time, info.cloudlet
         )
-        createAndSubmitOneCloudlet()
+        createAndSubmitOneCloudlet(broker)
     }
 
     /**
@@ -181,12 +190,12 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
 
     companion object {
         private const val site = 4
-        private const val HOSTS = 1
+        private const val HOSTS = 4
         private const val VMS = 1
         private const val HOST_PES_NUMBER = 4
         private const val VM_PES_NUMBER = 4
         private const val totalTask = 10000
-        private const val CLOUDLETS = totalTask/site //VMS * VM_PES_NUMBER
+        private const val CLOUDLETS = totalTask //VMS * VM_PES_NUMBER
 
         /**
          * Starts the example execution, calling the class constructor\
