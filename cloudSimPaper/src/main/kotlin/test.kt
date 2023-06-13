@@ -114,7 +114,7 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
      * @return the created VM
      */
     private fun createVm(): Vm {
-        val mips = 1000
+        val mips = 100
         return VmSimple(mips.toDouble(), VM_PES_NUMBER.toLong())
             .setRam(512).setBw(1000).setSize(10000)
             .setCloudletScheduler(CloudletSchedulerTimeShared())
@@ -129,7 +129,7 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
      */
     private fun createAndSubmitOneCloudlet(broker: DatacenterBroker) {
         val id = cloudletList.size
-        val length: Long = 100000 //in number of Million Instructions (MI)
+        val length: Long = lengthCloudlet //in number of Million Instructions (MI)
         val pesNumber = VM_PES_NUMBER
         val cloudlet = CloudletSimple(id.toLong(), length, pesNumber.toLong())
             .setFileSize(300)
@@ -196,6 +196,7 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
         private const val VM_PES_NUMBER = 4
         private const val totalTask = 10000
         private const val CLOUDLETS = totalTask //VMS * VM_PES_NUMBER
+        private const val lengthCloudlet = 100000
 
         /**
          * Starts the example execution, calling the class constructor\
