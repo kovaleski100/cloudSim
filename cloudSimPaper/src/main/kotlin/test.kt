@@ -196,7 +196,7 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
         private const val VM_PES_NUMBER = 4
         private const val totalTask = 10000
         private const val CLOUDLETS = totalTask //VMS * VM_PES_NUMBER
-        private const val lengthCloudlet = 100000
+        private const val lengthCloudlet = 100000L
 
         /**
          * Starts the example execution, calling the class constructor\
