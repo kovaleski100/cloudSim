@@ -39,6 +39,7 @@ import org.cloudsimplus.resources.Pe
 import org.cloudsimplus.resources.PeSimple
 import org.cloudsimplus.schedulers.cloudlet.CloudletSchedulerTimeShared
 import org.cloudsimplus.schedulers.vm.VmSchedulerSpaceShared
+import org.cloudsimplus.utilizationmodels.UtilizationModel
 import org.cloudsimplus.utilizationmodels.UtilizationModelFull
 import org.cloudsimplus.vms.Vm
 import org.cloudsimplus.vms.VmSimple
@@ -114,7 +115,7 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
      * @return the created VM
      */
     private fun createVm(): Vm {
-        val mips = 100
+        val mips = Vm_mips
         return VmSimple(mips.toDouble(), VM_PES_NUMBER.toLong())
             .setRam(512).setBw(1000).setSize(10000)
             .setCloudletScheduler(CloudletSchedulerTimeShared())
@@ -175,7 +176,7 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
      */
     private fun createHost(id: Int): Host {
         val peList = ArrayList<Pe>()
-        val mips: Long = 1000
+        val mips: Long = Host_mips
         for (i in 0 until HOST_PES_NUMBER) {
             peList.add(PeSimple(mips.toDouble()))
         }
@@ -194,9 +195,11 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
         private const val VMS = 1
         private const val HOST_PES_NUMBER = 4
         private const val VM_PES_NUMBER = 4
-        private const val totalTask = 10000
+        private const val Host_mips = 1000L * HOST_PES_NUMBER
+        private const val Vm_mips = 1000L * VM_PES_NUMBER
+        private const val totalTask = 100
         private const val CLOUDLETS = totalTask //VMS * VM_PES_NUMBER
-        private const val lengthCloudlet = 100000L
+        private const val lengthCloudlet = 1000L
 
         /**
          * Starts the example execution, calling the class constructor\
@@ -206,7 +209,9 @@ class CreateCloudletAfterLastFinishedOne private constructor() {
          */
         @JvmStatic
         fun main(args: Array<String>) {
+            val startTime  = System.currentTimeMillis()
             CreateCloudletAfterLastFinishedOne()
+            println((System.currentTimeMillis() - startTime)/1000.0)
         }
     }
 }
